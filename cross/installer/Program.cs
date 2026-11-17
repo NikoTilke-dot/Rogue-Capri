@@ -269,9 +269,11 @@ namespace RogueCapriSetup
             {
                 string self = Path.GetDirectoryName(Application.ExecutablePath);
                 // An explicit /D= wins, but only if it really is an install folder
-                // (contains our Uninstall.exe). Anything else is refused.
-                if (!string.IsNullOrWhiteSpace(dest) && Directory.Exists(dest) && File.Exists(Path.Combine(dest, "Uninstall.exe"))) dir = Path.GetFullPath(dest);
-                else dir = self;
+                // (contains our Uninstall.exe and the installed app). Anything else is refused.
+                if (!string.IsNullOrWhiteSpace(dest)) { dir = Path.GetFullPath(dest); }
+                else if (self != null && File.Exists(Path.Combine(self, "Uninstall.exe")) && File.Exists(Path.Combine(self, "RogueCapri.exe"))) dir = self;
+                else dir = null;
+                if (dir != null && (!File.Exists(Path.Combine(dir, "Uninstall.exe")) || !File.Exists(Path.Combine(dir, "RogueCapri.exe")))) return "Not an install folder.";
             }
             catch (Exception error) { return error.Message; }
             if (dir == null) return "Install folder not found.";
