@@ -1,6 +1,6 @@
 # Rogue Capri 1.0.1 — Pet Behavior Bugfix Report
 
-Branch: `bugfix/pet-behavior` — Commit: `34ad67c` (on top of `ea32764`, v1.0.0 stays untouched).
+Branch: `bugfix/pet-behavior` — Commit: `1e9fe9e` (on top of `ea32764`, v1.0.0 stays untouched).
 Release folder: `E:\Rogue-Capri-Release-1.0.1\` (Setup-Exe + 1.0.1 ZIP + notes + SHA256SUMS).
 
 ## 1. Always-on-top visibility (browser/editor/game overlay)
@@ -60,4 +60,4 @@ Companion, KI chat, memory, Rogue Mode, plugins, backup, installer flow, icon.
 - `E:\Rogue-Capri-Release-1.0.1\Rogue-Capri-Setup.exe`
 - `E:\Rogue-Capri-Release-1.0.1\RogueCapri-1.0.1-win-x64.zip`
 - `E:\Rogue-Capri-Release-1.0.1\RELEASE_NOTES.md`, `SHA256SUMS.txt`, `FINAL_ACCEPTANCE_REPORT.md` (v1.0.0), this report.
-- Tag `v1.0.0` untouched (`7c42ce7`); new tag `v1.0.1` → `34ad67c` when created.
+- Tag `v1.0.0` untouched (`7c42ce7`); new tag `v1.0.1` → `1e9fe9e` when created.
