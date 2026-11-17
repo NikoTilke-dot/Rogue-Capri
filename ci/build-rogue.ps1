@@ -5,7 +5,7 @@
 #   E:\Rogue Capri\Release\RogueCapri.exe          (portable copy)
 #   E:\Rogue Capri\Release\RogueCapri-1.0-win-x64.zip
 #   E:\Rogue Capri\Release\ReleaseInfo.txt         (versions + sha256)
-param([string]$InstallRoot = "E:\Rogue Capri")
+param([string]$InstallRoot = "E:\Rogue Capri", [string]$Version = "1.0.2")
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
@@ -42,13 +42,13 @@ Remove-Item $SetupOut -Recurse -Force
 
 Step "4. Release bundle"
 Copy-Item (Join-Path $Staging "RogueCapri.exe") (Join-Path $Release "RogueCapri.exe") -Force
-$ZipOut = Join-Path $Release "RogueCapri-1.0-win-x64.zip"
+$ZipOut = Join-Path $Release "RogueCapri-$Version-win-x64.zip"
 if (Test-Path $ZipOut) { Remove-Item $ZipOut -Force }
 Compress-Archive -Path (Join-Path $Staging "*") -DestinationPath $ZipOut -Force
 
 $sha = (Get-FileHash $SetupExe -Algorithm SHA256).Hash
 $info = @(
-  "Rogue Capri 1.0 (standalone build of Capri Desktop 0.9.0 + Capri Companion)",
+  "Rogue Capri $Version (standalone build of Capri Desktop 0.9.0 + Capri Companion)",
   "Built: $(Get-Date -Format 'yyyy-MM-dd HH:mm')",
   "dotnet SDK: $((dotnet --version))",
   "Rogue-Capri-Setup.exe SHA256: $sha",
