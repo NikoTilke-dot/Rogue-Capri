@@ -296,11 +296,14 @@ namespace RogueCapriSetup
                         if (string.Equals(name, "Uninstall.exe", StringComparison.OrdinalIgnoreCase)) continue;
                         File.Delete(file);
                     }
-                    foreach (string sub in Directory.EnumerateDirectories(dir))
+                    // Only the app's own runtime folders may be removed. Unknown
+                    // folders (e.g. a Release or user folder next to a default
+                    // install) are never touched.
+                    foreach (string name in LayoutDirs)
                     {
-                        string name = new DirectoryInfo(sub).Name;
+                        string sub = Path.Combine(dir, name);
                         if (string.Equals(name, "Data", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "Backup", StringComparison.OrdinalIgnoreCase)) continue;
-                        Directory.Delete(sub, true);
+                        if (Directory.Exists(sub)) Directory.Delete(sub, true);
                     }
                 }
                 else Directory.Delete(dir, true);

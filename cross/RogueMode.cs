@@ -155,6 +155,7 @@ namespace CapriDesktop
 
         private static string Play(IDictionary<string, string> args)
         {
+            if (!RogueHub.On) return "Rogue Mode is off.";
             string what;
             args.TryGetValue("what", out what);
             what = (what ?? "").Trim();
@@ -180,6 +181,7 @@ namespace CapriDesktop
 
         private static string Read(IDictionary<string, string> args)
         {
+            if (!RogueHub.On) return "Rogue Mode is off.";
             string need = Need(2);
             if (need != null) return need;
             string refused;
@@ -199,6 +201,7 @@ namespace CapriDesktop
 
         private static string Write(IDictionary<string, string> args)
         {
+            if (!RogueHub.On) return "Rogue Mode is off.";
             string need = Need(2);
             if (need != null) return need;
             string refused, path, text;
@@ -220,6 +223,7 @@ namespace CapriDesktop
 
         private static string Run(IDictionary<string, string> args)
         {
+            if (!RogueHub.On) return "Rogue Mode is off.";
             string need = Need(2);
             if (need != null) return need;
             string refused, path;
