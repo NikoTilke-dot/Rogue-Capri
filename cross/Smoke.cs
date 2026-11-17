@@ -156,6 +156,7 @@ namespace CapriDesktop
                 if (pet.Falling) return false;
                 if (!Sitting()) throw new Exception("A dropped Capri didn't sit down again.");
                 checks.Add("PASS drag and drop: grabbing her lifts her off, dropping her near a ledge makes her fall and sit on it");
+                ThrowChecks();
                 DragChecks();
                 PixelPoint hip = pet.Hip;
                 pet.Resize(320);
@@ -1573,6 +1574,77 @@ namespace CapriDesktop
                 asked.AddRange(askedWas);
                 pet.Saved.X = savedX; pet.Saved.Y = savedY; pet.Saved.Placed = placed;
             }
+        }
+
+        private void ThrowChecks()
+        {
+            var fields = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            AssertFlightFields(fields);
+            Desk desk = pet.Desk;
+            Action<PixelPoint> moveTo = pet.MoveTo;
+            List<PixelPoint> moves = new List<PixelPoint>();
+            try
+            {
+                pet.Desk = new BareDesk();
+                pet.MoveTo = delegate (PixelPoint to) { moves.Add(to); };
+                Point? spot = pet.BodySpot();
+                if (spot == null) throw new Exception("Couldn't find her body to throw.");
+                Point at = spot.Value;
+                PixelPoint home = pet.PointToScreen(at);
+                using (Avalonia.Input.Pointer mouse = new Avalonia.Input.Pointer(Avalonia.Input.Pointer.GetNextFreeId(), PointerType.Mouse, true))
+                {
+                    Press(mouse, at);
+                    for (int i = 1; i <= 6; i++)
+                    {
+                        Pull(mouse, Client(new PixelPoint(home.X + i * 120, home.Y - i * 40)));
+                        pet.DragFrame();
+                        Thread.Sleep(10);
+                    }
+                    PixelPoint released = pet.Anchor;
+                    Release(mouse, Client(home), false);
+                    bool thrown = (bool)typeof(Pet).GetField("thrown", fields).GetValue(pet);
+                    if (!thrown || !pet.Falling || pet.Dragging) throw new Exception("A fast release didn't throw her (thrown=" + thrown + ", falling=" + pet.Falling + ").");
+                    PixelPoint peak = pet.Anchor;
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    bool travelled = false, landed = false;
+                    // Smoke hides her, so her frames timer doesn't move her: step the flight leg herself.
+                    var flyM = typeof(Pet).GetMethod("Fly", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                    while (watch.ElapsedMilliseconds < 4000)
+                    {
+                        if ((bool)typeof(Pet).GetField("thrown", fields).GetValue(pet)) flyM.Invoke(pet, new object[] { pet.Now });
+                        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                        Thread.Sleep(20);
+                        PixelPoint now = pet.Anchor;
+                        if (Math.Abs(now.X - released.X) + Math.Abs(now.Y - released.Y) > 200) travelled = true;
+                        if (pet.Seat != null && (bool)typeof(Pet).GetField("thrown", fields).GetValue(pet) == false) { landed = true; break; }
+                        if (now.X > peak.X) peak = now;
+                    }
+                    if (!travelled) throw new Exception("A thrown Capri didn't travel after release (" + released + " -> " + pet.Anchor + ").");
+                    if (!landed || pet.Seat == null) throw new Exception("A thrown Capri didn't land and sit within 4 s (anchor=" + pet.Anchor + ", falling=" + pet.Falling + ", thrown=" + typeof(Pet).GetField("thrown", fields).GetValue(pet) + ", flyY=" + typeof(Pet).GetField("flyY", fields).GetValue(pet) + ", flyVY=" + typeof(Pet).GetField("flyVY", fields).GetValue(pet) + ").");
+                    checks.Add("PASS throw: a fast release flies her at the cursor's speed, she travels, then lands and sits");
+                    // Slow release still drops, no throw.
+                    moves.Clear();
+                    Press(mouse, at);
+                    Thread.Sleep(10);
+                    Pull(mouse, Client(new PixelPoint(home.X + 30, home.Y - 30)));
+                    pet.DragFrame();
+                    Thread.Sleep(120);
+                    Release(mouse, Client(home), false);
+                    bool thrown2 = (bool)typeof(Pet).GetField("thrown", fields).GetValue(pet);
+                    if (thrown2) throw new Exception("A slow release threw her.");
+                    checks.Add("PASS slow release still drops without a throw");
+                }
+            }
+            finally
+            {
+                pet.Desk = desk;
+                pet.MoveTo = moveTo;
+            }
+        }
+
+        private void AssertFlightFields(System.Reflection.BindingFlags fields)
+        {
+            if (typeof(Pet).GetField("thrown", fields) == null || typeof(Pet).GetField("flyVX", fields) == null) throw new Exception("Throw flight fields missing.");
         }
 
         private void KdeChecks()

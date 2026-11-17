@@ -320,11 +320,99 @@ namespace CapriDesktop
         // Linux forgets a window is on top once it hides, and setting Topmost to true again does nothing when it already is,
         // so a window that's back asks for it afresh (super-cr4SH's fix). Only while it should be: with Always on top off it
         // stays an ordinary window.
+        // On Windows the Avalonia Topmost flag alone doesn't stick either (observed:
+        // the native window stays out of the topmost band), so it asks Windows
+        // directly, like the WinForms Capri did with its NativeTop bit.
         internal static void OnTopAgain(Window window)
         {
             if (!window.Topmost) return;
             window.Topmost = false;
             window.Topmost = true;
+            if (!OperatingSystem.IsWindows()) return;
+            try
+            {
+                IPlatformHandle handle = window.TryGetPlatformHandle();
+                if (handle == null) return;
+                SetWindowPos(handle.Handle, HWndTopMost, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+                SetWindowLong(handle.Handle, -20, GetWindowLong(handle.Handle, -20) | 0x8);
+            }
+            catch (Exception) { }
         }
+
+        private static readonly IntPtr HWndTopMost = new IntPtr(-1);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr insertAfter, int x, int y, int cx, int cy, int flags);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr h, int index);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int SetWindowLong(IntPtr h, int index, int value);
+
+        // Capri's topmost, announced on Windows after her window exists. On Windows the
+        // Avalonia Topmost flag alone doesn't stick (verified: the visible pet window
+        // never got the topmost bit), and the platform handle Avalonia reports is not
+        // always the visible window's own handle (Avalonia recreates native windows),
+        // so this finds her actual visible window among this process's windows by its
+        // position and puts it in Windows' topmost band directly, like the WinForms
+        // Capri did with its NativeTop bit. Retries briefly until the bit is observed,
+        // then stops. Z-order only - never activates or moves anything, so typing in a
+        // browser never loses focus.
+        internal static void EnsureOnTop(Window window)
+        {
+            if (!window.Topmost || !OperatingSystem.IsWindows()) return;
+            AssertTop(window, 0);
+        }
+
+        private static void AssertTop(Window window, int attempt)
+        {
+            if (!window.Topmost) return;
+            IntPtr handle = PetWindowHandle(window);
+            if (handle != IntPtr.Zero)
+            {
+                try
+                {
+                    if ((GetWindowLong(handle, -20) & 0x8) == 0)
+                    {
+                        SetWindowPos(handle, HWndTopMost, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+                        SetWindowLong(handle, -20, GetWindowLong(handle, -20) | 0x8);
+                    }
+                }
+                catch (Exception) { }
+            }
+            if (attempt < 18)
+            {
+                double waitMs = attempt < 12 ? 250 : 2000;
+                try { Avalonia.Threading.DispatcherTimer.RunOnce(() => AssertTop(window, attempt + 1), TimeSpan.FromMilliseconds(waitMs)); } catch (Exception) { }
+            }
+        }
+
+        // The visible native window belonging to this Avalonia window (same process,
+        // same on-screen rectangle) - the handle Avalonia hands out isn't always it.
+        private static IntPtr PetWindowHandle(Window window)
+        {
+            IntPtr found = IntPtr.Zero;
+            try
+            {
+                int myPid = System.Diagnostics.Process.GetCurrentProcess().Id;
+                Size clientSize = window.ClientSize;
+                PixelPoint pos = window.Position;
+                EnumWindows(delegate (IntPtr h, IntPtr l)
+                {
+                    if (!IsWindowVisible(h)) return true;
+                    uint pid;
+                    GetWindowThreadProcessId(h, out pid);
+                    if (pid != (uint)myPid) return true;
+                    if (!GetWindowRect(h, out RECT r)) return true;
+                    bool close = Math.Abs((r.Width - r.X) - clientSize.Width) <= 40 && Math.Abs((r.Height - r.Y) - clientSize.Height) <= 40 && Math.Abs(r.X - pos.X) <= 12 && Math.Abs(r.Y - pos.Y) <= 12;
+                    if (close) { found = h; return false; }
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch (Exception) { }
+            return found;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr l);
+        private delegate bool EnumWindowsProc(IntPtr h, IntPtr l);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out RECT r);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+        private struct RECT { public int X, Y, Width, Height; }
     }
 }

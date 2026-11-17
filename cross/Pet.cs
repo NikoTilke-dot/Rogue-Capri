@@ -464,6 +464,20 @@ namespace CapriDesktop
         private Point pointer = new Point(-1, -1);
         private double fallSpeed;
         private double fallStep;
+        // Throw physics, ported from the WinForms Capri: when she's let go while the
+        // cursor is still moving fast, she flies at its speed, gravity and air drag
+        // apply, and she bounces off her screen's sides with some speed lost each
+        // time. Caught again mid-flight, the flight ends and she's grabbed.
+        private const double ThrowSpan = 0.08, TrailGap = 0.03, ThrowFrom = 1300, ThrowMost = 7000;
+        private const double ThrowDrag = 0.6, WallBounce = 0.55, FloorBounce = 0.42, FloorGrip = 0.72, FlightLongest = 8;
+        private bool thrown;
+        private double flyX, flyY, flyVX, flyVY, flyBegan, flyHardest = 0, flyBumped = -1;
+        private PixelPoint flyAt;
+        private PixelRect flyArea;
+        private int flyFloors;
+        private List<Ledge> flyLedges;
+        private double flyLedgesAt = -1;
+        private readonly List<KeyValuePair<double, PixelPoint>> trail = new List<KeyValuePair<double, PixelPoint>>();
         private Ledge seat;
         private Ledge fallTo;
         private double coveredSince = -1;
@@ -613,6 +627,9 @@ namespace CapriDesktop
             Unfocus(Talk.Bubble);
             Unfocus(Talk.Pill);
             if (!OnTop) Stack(false);
+            // Setting Topmost before the window exists isn't enough on Windows:
+            // re-assert it after the window is actually shown (property toggle).
+            Opened += delegate { Look.EnsureOnTop(this); };
             frames.Interval = TimeSpan.FromMilliseconds(33);
             frames.Tick += delegate { Program.Guard(Tick); };
             // Closing her while held must not leave the frame timer moving a closed window.
@@ -848,7 +865,7 @@ namespace CapriDesktop
             }
             if (!dragging)
             {
-                if (falling) Tumble(now);
+                if (falling) { if (thrown) Fly(now); else Tumble(now); }
                 else if (seat != null) HoldSeat(now);
             }
             if (walking) Walk(now);
@@ -1327,6 +1344,7 @@ namespace CapriDesktop
                 pressed = true;
                 clicks++;
                 dragging = false;
+                if (thrown) { thrown = false; falling = false; trail.Clear(); }
                 dragPending = false;
                 downAt = DragPoint(at);
                 grab = new PixelPoint(downAt.X - anchor.X, downAt.Y - anchor.Y);
@@ -1370,6 +1388,14 @@ namespace CapriDesktop
             if (!pressed || !dragging || !dragPending) return;
             dragPending = false;
             Move(new PixelPoint(dragAt.X - grab.X, dragAt.Y - grab.Y));
+            try
+            {
+                double at = Now;
+                trail.Add(new KeyValuePair<double, PixelPoint>(at, dragAt));
+                while (trail.Count > 0 && at - trail[0].Key > 0.5) trail.RemoveAt(0);
+                if (trail.Count > 24) trail.RemoveRange(0, trail.Count - 24);
+            }
+            catch (Exception) { }
         }
 
         protected override void OnPointerExited(PointerEventArgs e)
@@ -1392,7 +1418,8 @@ namespace CapriDesktop
                 }
                 pressed = false;
                 e.Pointer.Capture(null);
-                if (dragging) Let((e.KeyModifiers & KeyModifiers.Shift) != 0);
+                bool shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+                if (dragging) { if (!(shift == false && Throw(Now))) Let(shift); }
                 else React();
             });
         }
@@ -1598,6 +1625,7 @@ namespace CapriDesktop
             fallTo = null;
             falling = false;
             dragging = true;
+            trail.Clear();
             Play(dangle);
             Talk.Dismiss();
         }
@@ -1612,6 +1640,145 @@ namespace CapriDesktop
             fallSpeed = 0;
             fallStep = Now;
             return true;
+        }
+
+        // Her cursor speed at this moment, from the drag trail (the WinForms Capri's TrailSpeed, gap-limited like there).
+        private double CursorSpeed(double now, out double vx, out double vy)
+        {
+            vx = vy = 0;
+            if (trail.Count < 2) return 0;
+            PixelPoint a = TrailAt(now - ThrowSpan), b = TrailAt(now);
+            vx = (b.X - a.X) / ThrowSpan;
+            vy = (b.Y - a.Y) / ThrowSpan;
+            return Math.Sqrt(vx * vx + vy * vy);
+        }
+
+        private PixelPoint TrailAt(double at)
+        {
+            if (at <= trail[0].Key) return trail[0].Value;
+            for (int i = 1; i < trail.Count; i++)
+            {
+                if (at > trail[i].Key) continue;
+                double began = Math.Max(trail[i - 1].Key, trail[i].Key - TrailGap), length = trail[i].Key - began;
+                double part = at <= began ? 0 : length <= 0 ? 1 : (at - began) / length;
+                PixelPoint a = trail[i - 1].Value, b = trail[i].Value;
+                return new PixelPoint((int)Math.Round(a.X + (b.X - a.X) * part), (int)Math.Round(a.Y + (b.Y - a.Y) * part));
+            }
+            return trail[trail.Count - 1].Value;
+        }
+
+        // Let go while the cursor's still going fast and she's thrown at its speed; slower, she drops as before.
+        private bool Throw(double now)
+        {
+            if (!dragging || trail.Count < 2) return false;
+            double vx, vy;
+            double fast = CursorSpeed(now, out vx, out vy);
+            double scale = Math.Max(1, DesktopScaling);
+            if (fast < ThrowFrom * scale) return false;
+            double most = ThrowMost * scale;
+            if (fast > most) { vx *= most / fast; vy *= most / fast; }
+            Launch(vx, vy, now);
+            return true;
+        }
+
+        private void Launch(double vx, double vy, double now)
+        {
+            trail.Clear();
+            walking = false;
+            seat = null;
+            fallTo = null;
+            falling = true;
+            thrown = true;
+            fallSpeed = 0;
+            fallStep = now;
+            flyX = anchor.X;
+            flyY = anchor.Y;
+            flyAt = anchor;
+            flyVX = vx;
+            flyVY = vy;
+            PixelRect area = Area;
+            flyArea = area;
+            flyBegan = now;
+            flyHardest = 0;
+            flyFloors = 0;
+            flyLedges = null;
+            dragging = false;
+            Play(dangle);
+        }
+
+        // One frame of her flight: gravity and air drag, bounces off her screen's sides, top and taskbar that lose some speed
+        // each time, and a ledge she comes down onto catches her like a fall (the WinForms Capri's Fly loop, in Avalonia pixels).
+        private void Fly(double now)
+        {
+            double step = Math.Max(0, Math.Min(0.05, now - fallStep));
+            fallStep = now;
+            if (anchor != flyAt) { flyX = anchor.X; flyY = anchor.Y; }
+            PixelRect here = Area;
+            if (here != flyArea) flyArea = here;
+            int size = (int)body.Size;
+            double hipDown = Px(body.Size * SitY);
+            double floor = (double)flyArea.Bottom - hipDown;
+            double left = (double)flyArea.X - Px(body.Size * FrameX);
+            double widthPx = (int)Math.Round(ClientSize.Width * DesktopScaling);
+            double right = (double)flyArea.Right - Px(body.Size * FrameX) - widthPx;
+            double top = (double)flyArea.Y - Px(body.Size * FrameY);
+            double gravity = size * 11, settle = size * 2.2;
+            int steps = Math.Max(1, (int)Math.Ceiling(step / 0.004));
+            double dt = step / steps;
+            for (int i = 0; i < steps; i++)
+            {
+                double hipWas = flyY + hipDown;
+                flyVY += gravity * dt;
+                double keep = Math.Exp(-ThrowDrag * dt);
+                flyVX *= keep;
+                flyVY *= keep;
+                flyX += flyVX * dt;
+                flyY += flyVY * dt;
+                if (flyX < left) { flyHardest = Math.Max(flyHardest, Math.Abs(flyVX)); flyX = Math.Min(right, left + (left - flyX) * WallBounce); flyVX = Math.Abs(flyVX) * WallBounce; }
+                else if (flyX > right) { flyHardest = Math.Max(flyHardest, Math.Abs(flyVX)); flyX = Math.Max(left, right - (flyX - right) * WallBounce); flyVX = -Math.Abs(flyVX) * WallBounce; }
+                if (flyY < top) { flyHardest = Math.Max(flyHardest, Math.Abs(flyVY)); flyY = Math.Min(floor, top + (top - flyY) * WallBounce); flyVY = Math.Abs(flyVY) * WallBounce; }
+                double hipNow = flyY + hipDown;
+                if (flyVY > 0)
+                {
+                    if (flyLedges == null || now - flyLedgesAt >= 0.25) { try { flyLedges = Ledges(); } catch (Exception) { flyLedges = new List<Ledge>(); } flyLedgesAt = now; }
+                    int hipX = (int)Math.Round(flyX) + Px(body.Size * SitX);
+                    Ledge onto = null;
+                    foreach (Ledge ledge in flyLedges)
+                    {
+                        if (ledge.Floor || ledge.Y < hipWas || ledge.Y > hipNow || ledge.Right - ledge.Left < 24 || hipX < ledge.Left || hipX > ledge.Right) continue;
+                        if (onto == null || ledge.Y < onto.Y) onto = ledge;
+                    }
+                    if (onto != null)
+                    {
+                        anchor = new PixelPoint((int)Math.Round(flyX), onto.Y - (int)hipDown);
+                        flyAt = anchor;
+                        double impact = flyVY;
+                        Land(onto);
+                        if (seat == onto) { thrown = false; return; }
+                        flyLedges.Remove(onto);
+                    }
+                }
+                if (flyY >= floor)
+                {
+                    double impact = flyVY;
+                    flyY = floor;
+                    if (impact > settle && flyFloors < 6) { flyHardest = Math.Max(flyHardest, impact); flyVY = -impact * FloorBounce; flyVX *= FloorGrip; flyFloors++; }
+                    else { Settle(impact); return; }
+                }
+            }
+            anchor = new PixelPoint((int)Math.Round(flyX), (int)Math.Round(flyY));
+            flyAt = anchor;
+            Move(anchor);
+            if (now - flyBegan > FlightLongest) thrown = false;
+        }
+
+        // Slow at the floor, she lands on it like any fall.
+        private void Settle(double impact)
+        {
+            anchor = new PixelPoint((int)Math.Round(flyX), (int)Math.Round(flyY));
+            flyAt = anchor;
+            thrown = false;
+            Land(new Ledge { Floor = true, Left = flyArea.X, Right = flyArea.Right, Y = flyArea.Bottom });
         }
 
         internal void Resize(double size)
@@ -2688,6 +2855,7 @@ namespace CapriDesktop
         {
             Topmost = above;
             foreach (Window window in new Window[] { Talk.Bubble, Talk.Typer, Talk.Pill }) window.Topmost = above;
+            if (above) { Look.EnsureOnTop(this); }
         }
 
         internal void Raise(double until)
