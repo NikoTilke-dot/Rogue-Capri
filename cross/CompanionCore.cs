@@ -353,6 +353,7 @@ namespace CapriDesktop
             Tools["open_folder"] = new BuiltInTool("open_folder", "Open a folder (needs confirmation unless SECURITY allows).", args => DesktopTools.OpenFolder(args.TryGetValue("path", out string p) ? p : "", true).Text);
             Tools["search_files"] = new BuiltInTool("search_files", "List files matching a pattern in a folder.", args => DesktopTools.SearchFiles(args.TryGetValue("folder", out string f) ? f : "", args.TryGetValue("pattern", out string pat) ? pat : "*").Text);
             Tools["current_time"] = new BuiltInTool("current_time", "Current date and time.", args => DesktopTools.CurrentTime().Text);
+            foreach (ICompanionTool rogue in RogueTools.All()) Tools[rogue.Name] = rogue;
             try { Directory.CreateDirectory(folder); } catch (Exception) { }
             string[] files;
             try { files = Directory.GetFiles(folder, "*.dll"); }

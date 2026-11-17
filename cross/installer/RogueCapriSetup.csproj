@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>Rogue-Capri-Setup</AssemblyName>
+    <RootNamespace>RogueCapriSetup</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Version>1.0.0</Version>
+    <Product>Rogue Capri Setup</Product>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <ApplicationIcon>../../assets/chip.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Filled by ci/build-rogue.ps1 with the zipped self-contained RogueCapri publish output. -->
+    <EmbeddedResource Include="app.zip" />
+  </ItemGroup>
+</Project>

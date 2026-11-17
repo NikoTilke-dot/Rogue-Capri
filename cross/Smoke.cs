@@ -1983,7 +1983,7 @@ namespace CapriDesktop
                 pet.OpenMainframe();
                 Mainframe frame = pet.Frame;
                 foreach (string font in new[] { "BarlowSemiCondensed-Regular.ttf", "BarlowSemiCondensed-SemiBold.ttf", "BarlowCondensed-SemiBold.ttf" })
-                    if (!Avalonia.Platform.AssetLoader.Exists(new Uri("avares://Capri/Assets/" + font))) throw new Exception("The Mainframe font is missing: " + font);
+                    if (!Avalonia.Platform.AssetLoader.Exists(new Uri("avares://RogueCapri/Assets/" + font))) throw new Exception("The Mainframe font is missing: " + font);
                 var tray = pet.TrayMenu();
                 if (tray.Items.Count != pet.ContextMenu.Items.Count) throw new Exception("The tray and body menus have different rows.");
                 for (int i = 0; i < tray.Items.Count; i++)

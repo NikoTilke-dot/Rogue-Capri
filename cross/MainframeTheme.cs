@@ -78,8 +78,8 @@ namespace CapriDesktop
             return Color.FromArgb(colour.A, v, v, v);
         }
 
-        internal static readonly FontFamily Text = new FontFamily("avares://Capri/Assets#Barlow Semi Condensed");
-        internal static readonly FontFamily Display = new FontFamily("avares://Capri/Assets#Barlow Condensed");
+        internal static readonly FontFamily Text = new FontFamily("avares://RogueCapri/Assets#Barlow Semi Condensed");
+        internal static readonly FontFamily Display = new FontFamily("avares://RogueCapri/Assets#Barlow Condensed");
         internal const double Size = 38.0 / 3;
 
         internal static IBrush Brush(string value) { return new SolidColorBrush(Tint(value)); }

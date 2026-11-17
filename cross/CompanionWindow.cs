@@ -83,6 +83,7 @@ namespace CapriDesktop
         internal CompanionWindow(Pet owner) : base("Companion")
         {
             pet = owner;
+            RogueHub.LoadFrom(pet);
             memory = pet.CompanionMemory ?? (pet.CompanionMemory = new MemoryStore(pet.FolderPath));
             plugins = new PluginManager(pet.FolderPath, memory);
             BuildShell();
@@ -142,6 +143,9 @@ namespace CapriDesktop
                 nav.Children.Add(button);
                 navButtons.Add(button);
             }
+            rogueBadge = new NeonCaption { Text = "normal mode", Ink = MainframeTheme.Faint, Size = 12, Bold = true, Width = 176, Height = 20 };
+            nav.Children.Add(rogueBadge);
+            RefreshRogueBadge();
 
             var main = new Border { Background = MainframeTheme.Brush("#120810"), Padding = new Thickness(16) };
             Grid.SetColumn(main, 1);
@@ -179,6 +183,44 @@ namespace CapriDesktop
             statusText = text;
             ActivityLog.Add(text);
             if (chatStatus != null) chatStatus.Text = text;
+        }
+
+        private NeonCaption rogueBadge;
+
+        private void RefreshRogueBadge()
+        {
+            if (rogueBadge == null) return;
+            rogueBadge.Text = RogueHub.On ? "ROGUE MODE · LEVEL " + RogueHub.Level : "normal mode";
+            rogueBadge.Ink = RogueHub.On ? MainframeTheme.Hot : MainframeTheme.Faint;
+        }
+
+        private bool HandleRogueCommand(string text)
+        {
+            string t = (text ?? "").ToLowerInvariant();
+            bool on = t.Contains("rogue mode aktivieren") || t.Contains("rogue mode an") || t.Contains("rogue mode on")
+                || t.Contains("activate rogue mode") || t.Contains("werde frecher") || t.Contains("werde heute etwas frecher")
+                || t.Contains("become more mischievous") || t.Contains("rogue mode ein");
+            bool off = t.Contains("rogue mode aus") || t.Contains("rogue mode off") || t.Contains("rogue mode deaktivieren")
+                || t.Contains("deactivate rogue mode") || t.Contains("zurueck zum normalen modus") || t.Contains("zurück zum normalen modus")
+                || t.Contains("back to normal mode");
+            if (!on && !off) return false;
+            if (on)
+            {
+                if (!RogueHub.SetOn(true))
+                {
+                    SetStatus("Rogue Mode needs at least one allowed folder for level " + RogueHub.Level + ". Add one on the Character page.");
+                    AppendBubble("assistant", "Level " + RogueHub.Level + " needs an allowed folder first. Tell me where I may play: Character page, add a folder.");
+                    return true;
+                }
+                AppendBubble("assistant", "Rogue Mode ist AN (Stufe " + RogueHub.Level + "). Freche Sachen erlaubt - aber weiterhin nur in deinen freigegebenen Ordnern, alles wird geloggt und rückgängig = alles ohne Löschen.");
+            }
+            else
+            {
+                RogueHub.SetOn(false);
+                AppendBubble("assistant", "Rogue Mode ist AUS. Zurück zum normalen Modus.");
+            }
+            RefreshRogueBadge();
+            return true;
         }
 
         // ---- small control helpers -------------------------------------------
@@ -346,6 +388,7 @@ namespace CapriDesktop
             string text = chatInput.Text;
             if (string.IsNullOrWhiteSpace(text)) return;
             chatInput.Text = "";
+            if (HandleRogueCommand(text)) return;
             AppendBubble("user", text.Trim());
             session.Add(new ChatMsg("user", text.Trim()));
             memory.AddHistory("user", text.Trim());
@@ -378,7 +421,7 @@ namespace CapriDesktop
         private List<ChatMsg> BuildMessages()
         {
             var list = new List<ChatMsg>();
-            Personality personality = Personalities.Find(pet.Saved.CompanionPersonalityId, pet.Saved);
+            Personality personality = RogueHub.On ? Personalities.Find("rogue", pet.Saved) : Personalities.Find(pet.Saved.CompanionPersonalityId, pet.Saved);
             string system = Personalities.BuildSystemPrompt(personality, memory);
             if (!string.IsNullOrWhiteSpace(system)) list.Add(new ChatMsg("system", system));
             int from = Math.Max(0, session.Count - 20);
@@ -415,7 +458,8 @@ namespace CapriDesktop
                 DispatcherTimer.RunOnce(() => { if (avatar.State == "talk") avatar.State = "idle"; }, TimeSpan.FromSeconds(3));
             }
             var tools = ExtractTools(full);
-            if (tools.Count > 0 && toolRound < 3) OfferTools(tools, toolRound);
+            int maxRounds = RogueHub.On && RogueHub.Level >= 3 ? 5 : 3;
+            if (tools.Count > 0 && toolRound < maxRounds) OfferTools(tools, toolRound);
         }
 
         private void UpdateChatButtons()
@@ -478,6 +522,11 @@ namespace CapriDesktop
 
         private bool ToolAllowed(string name)
         {
+            if (RogueHub.On && name.StartsWith("rogue_"))
+            {
+                if (name == "rogue_play") return true;
+                return RogueHub.Level >= 2;
+            }
             if (pet.Saved.CompanionConfirm) return false;
             switch (name)
             {
@@ -494,6 +543,11 @@ namespace CapriDesktop
                 if (!plugins.Tools.ContainsKey(call.Name))
                 {
                     AppendBubble("assistant", "(unknown tool requested: " + call.Name + ")");
+                    continue;
+                }
+                if (call.Name.StartsWith("rogue_") && !RogueHub.On)
+                {
+                    AppendBubble("assistant", "(rogue tools are only active in Rogue Mode - say \"rogue mode aktivieren\" to turn it on)");
                     continue;
                 }
                 if (ToolAllowed(call.Name)) { RunTool(call, toolRound); continue; }
@@ -709,7 +763,56 @@ namespace CapriDesktop
             var note = Label("These control her desktop avatar. The preview here mirrors her sprite animations; the chat window above shows her state while she thinks and talks.", MainframeTheme.Faint, 13);
             return Column(
                 Label("CHARACTER", MainframeTheme.Rose, 20, true), avatarBox, stateRow,
-                Label("Desktop avatar size: " + pet.Saved.Size, MainframeTheme.Faint, 12, true), sizeRow, note);
+                Label("Desktop avatar size: " + pet.Saved.Size, MainframeTheme.Faint, 12, true), sizeRow, note,
+                Label("ROGUE MODE", MainframeTheme.Hot, 20, true), BuildRogueSection());
+        }
+
+        private Control BuildRogueSection()
+        {
+            var on = new CheckBox { Content = "Rogue Mode aktivieren", IsChecked = RogueHub.On };
+            on.IsCheckedChanged += (_, _) =>
+            {
+                if (!RogueHub.SetOn(on.IsChecked == true))
+                {
+                    on.IsChecked = false;
+                    SetStatus("Level " + RogueHub.Level + " needs an allowed folder. Add one below.");
+                }
+                RefreshRogueBadge();
+            };
+            var level = new NeonPicker { Width = 340, Height = 30 };
+            level.Options(new[] { "1 · Creative (play & jokes)", "2 · Autonomous (files & programs in allowed folders)", "3 · Advanced (multi-step, no per-step prompts)" });
+            level.Selected = RogueHub.Level - 1;
+            level.Changed += i => { RogueHub.Level = i + 1; RogueHub.Persist(); RefreshRogueBadge(); SetStatus("Rogue level " + RogueHub.Level + " active."); };
+            var dirs = new ListBox { Height = 110, Background = MainframeTheme.Well, Foreground = MainframeTheme.White };
+            foreach (string d in RogueHub.Dirs) dirs.Items.Add(d);
+            var addDir = Entry("Folder path, e.g. E:\\Rogue Capri\\Data\\Workspace");
+            var addButton = Button("Allow folder", () =>
+            {
+                string path = addDir.Text.Trim();
+                if (!RogueGuard.IsAllowedDir(path)) { SetStatus("Refused: not an existing, usable folder (system folders are not allowed)."); return; }
+                RogueHub.Dirs.Add(path);
+                RogueHub.Persist();
+                dirs.Items.Add(path);
+                addDir.Text = "";
+                SetStatus("Allowed folder added: " + path);
+            }, 140);
+            var removeButton = Button("Remove selected", () =>
+            {
+                if (dirs.SelectedIndex < 0) return;
+                string removed = dirs.SelectedItem.ToString();
+                RogueHub.Dirs.RemoveAll(d => string.Equals(d, removed, StringComparison.OrdinalIgnoreCase));
+                dirs.Items.RemoveAt(dirs.SelectedIndex);
+                RogueHub.Persist();
+                SetStatus("Allowed folder removed: " + removed);
+            }, 150);
+            var kill = Button("NOTAUS: Rogue Mode aus", () => { RogueHub.SetOn(false); RefreshRogueBadge(); ShowPage("character"); }, 220);
+            var guard = Label("Guardrails: only inside the allowed folders, never delete, no credential files, everything logged. Rogue Mode is always off after a restart.", MainframeTheme.Faint, 12);
+            return Column(
+                Label("Status: " + RogueHub.Who() + " · Level " + RogueHub.Level, MainframeTheme.Cyan, 14),
+                on, Label("Stufe", MainframeTheme.Faint, 12, true), level,
+                Label("Freigegebene Ordner", MainframeTheme.Faint, 12, true), dirs,
+                Row(addDir, addButton), removeButton,
+                kill, guard);
         }
 
         private Control BuildTools()

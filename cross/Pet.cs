@@ -475,7 +475,7 @@ namespace CapriDesktop
         internal Pet(IClassicDesktopStyleApplicationLifetime desktop)
         {
             this.desktop = desktop;
-            folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Capri");
+            folder = Program.Smoke != null ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Capri") : DataRoot();
             fresh = Program.Smoke == null && !File.Exists(Path.Combine(folder, "cross.json"));
             Saved = Program.Smoke != null ? new Settings() : Load();
             StartCare();

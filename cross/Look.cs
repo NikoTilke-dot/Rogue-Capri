@@ -18,7 +18,7 @@ namespace CapriDesktop
         internal static readonly Color Dim = Color.FromRgb(122, 128, 138);
         internal static readonly Color Edge = Color.FromRgb(70, 73, 82);
         internal static readonly Color Pink = Color.FromRgb(255, 46, 136);
-        internal static readonly FontFamily Mono = new FontFamily("avares://Capri/Assets#Share Tech Mono");
+        internal static readonly FontFamily Mono = new FontFamily("avares://RogueCapri/Assets#Share Tech Mono");
         internal static readonly Typeface Regular = new Typeface(Mono);
         internal static readonly Typeface Italic = new Typeface(Mono, FontStyle.Italic);
         internal static readonly Typeface Bold = new Typeface(Mono, FontStyle.Normal, FontWeight.Bold);

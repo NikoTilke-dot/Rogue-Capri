@@ -33,7 +33,7 @@ namespace CapriDesktop
 
         internal MainframeWindow(string title)
         {
-            Title = "Capri " + title; SystemDecorations = SystemDecorations.None; CanResize = false;
+            Title = "Rogue Capri " + title; SystemDecorations = SystemDecorations.None; CanResize = false;
             Background = Brushes.Transparent; TransparencyLevelHint = new[] { WindowTransparencyLevel.Transparent };
             FontFamily = MainframeTheme.Text; FontSize = MainframeTheme.Size; Foreground = MainframeTheme.White;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
