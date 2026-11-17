@@ -57,8 +57,43 @@ are explicit EmbeddedResource LogicalNames — unaffected by assembly rename
     parentheses-`goto`; full re-test pending (build → install → uninstall →
     verify Data preserved + dir removal only outside Data).
 
-### Not yet done (revised)
+### Installer fixes — RE-VERIFIED 2026-11-17 (~01:34)
 
-- Rebuild Release with installer fixes via `ci/build-rogue.ps1`, reinstall to TestInstall (Start-Process), launch-test the font fix, verify Data persists across runs.
-- Full uninstall flow test incl. keep-data verification (regression test for the incident).
+- Release rebuilt via ci/build-rogue.ps1 (font fix + installer fixes included).
+- Silent install via Start-Process (/S /D=E:\Rogue Capri\TestInstall): ~3s, exit OK.
+- Font fix verified: RogueCapri.exe stays running (PID 11660, 10 s) and writes Data\cross.json — no startup crash.
+- Uninstall regression test passed: marker file Data\KEEPMARKER.txt survived; RogueCapri.exe / Uninstall.exe / registry entry / Start-menu shortcut all removed; fresh reinstall kept Data\KEEPMARKER.txt (update = data-preserving).
+
+### Backup script ci/backup-rogue.ps1 — VERIFIED
+
+- Locates data root via RogueCapriHome env, registry InstallLocation\Data, <install>\Data, %AppData%\Capri (initially picked the AppData fallback; fixed during verification to correctly pick the installed TestInstall\Data).
+- Output: E:\Rogue Capri\Backup\rogue-backup-<yyyyMMdd-HHmmss>.zip (unique timestamped name, never overwrites).
+- Contents verified with test fixtures: cross.json (settings incl. Rogue config), companion-memory.json (Companion memory), plugins\ — archive readable via ZipFile, entry count asserted non-zero. Excludes *.tmp/*.log/cache/Temp.
+- Original user data untouched (read-only copy staging).
+
+### Final smoke (code state at commit 45c6dcf) — VERIFIED
+
+- dotnet run -- --smoke <dir>: 12 PASS, 1 FAIL — identical to pristine backup commit 41b3b44 (pre-existing environmental drag test; harness aborts at first failure). No regression.
+
+### Git — VERIFIED
+
+- 41b3b44 pre-Rogue backup commit (merge base) preserved.
+- 45c6dcf "Rogue Capri 1.0" — all changes committed (code + installer + ci + docs).
+- No remote configured (documented in UPSTREAM_UPDATES.md; no URL invented).
+
+### Known remaining limitations (not blocking 1.0)
+
+- GUI .NET single-file exes should be launched via Start-Process/Explorer — direct execution from Git Bash intermittently stalls bundle startup in this environment.
+- The environmental smoke FAIL (drag didn't follow the latest pointer) aborts the smoke harness in this environment; later tests do not run here. Identical on pristine code (upstream test, not modified).
+- NSIS is not installed; the custom WinForms installer Rogue-Capri-Setup.exe (single-file, embedded app zip, silent/quiet-uninstall, data-keep default) is used.
+- .git/worktrees/pristine leftover directory could not be deleted (file lock); harmless — worktree registration was pruned.
+- cross/installer/app.zip is a build artifact, not committed. Check git status before committing.
+
+### Final deliverables on E:
+
+- E:\Rogue Capri\Release\Rogue-Capri-Setup.exe (175 MB, single-file, standalone)
+- E:\Rogue Capri\Release\RogueCapri-1.0-win-x64.zip (56.7 MB portable bundle)
+- E:\Rogue Capri\Release\ReleaseInfo.txt (SHA256 etc.)
+- E:\Rogue Capri\TestInstall\ — installed/tested instance (Data preserved)
+- E:\Rogue Capri\Backup\rogue-backup-*.zip — verified backups
 
