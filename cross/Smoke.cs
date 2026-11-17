@@ -1606,7 +1606,7 @@ namespace CapriDesktop
                     if (!thrown || !pet.Falling || pet.Dragging) throw new Exception("A fast release didn't throw her (thrown=" + thrown + ", falling=" + pet.Falling + ").");
                     PixelPoint peak = pet.Anchor;
                     var watch = System.Diagnostics.Stopwatch.StartNew();
-                    bool travelled = false, landed = false;
+                    bool travelled = false, landed = false, outOfBounds = false;
                     // Smoke hides her, so her frames timer doesn't move her: step the flight leg herself.
                     var flyM = typeof(Pet).GetMethod("Fly", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
                     while (watch.ElapsedMilliseconds < 4000)
@@ -1616,9 +1616,12 @@ namespace CapriDesktop
                         Thread.Sleep(20);
                         PixelPoint now = pet.Anchor;
                         if (Math.Abs(now.X - released.X) + Math.Abs(now.Y - released.Y) > 200) travelled = true;
+                        PixelRect flyArea = (PixelRect)typeof(Pet).GetField("flyArea", fields).GetValue(pet);
+                        if (now.X < flyArea.X - 300 || now.X > flyArea.Right + 300 || now.Y < flyArea.Y - 300 || now.Y > flyArea.Bottom + 100) outOfBounds = true;
                         if (pet.Seat != null && (bool)typeof(Pet).GetField("thrown", fields).GetValue(pet) == false) { landed = true; break; }
                         if (now.X > peak.X) peak = now;
                     }
+                    if (outOfBounds) throw new Exception("A thrown Capri left her screen's work area during flight (" + released + " -> " + pet.Anchor + ").");
                     if (!travelled) throw new Exception("A thrown Capri didn't travel after release (" + released + " -> " + pet.Anchor + ").");
                     if (!landed || pet.Seat == null) throw new Exception("A thrown Capri didn't land and sit within 4 s (anchor=" + pet.Anchor + ", falling=" + pet.Falling + ", thrown=" + typeof(Pet).GetField("thrown", fields).GetValue(pet) + ", flyY=" + typeof(Pet).GetField("flyY", fields).GetValue(pet) + ", flyVY=" + typeof(Pet).GetField("flyVY", fields).GetValue(pet) + ").");
                     checks.Add("PASS throw: a fast release flies her at the cursor's speed, she travels, then lands and sits");

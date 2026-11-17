@@ -346,17 +346,30 @@ namespace CapriDesktop
 
         // Capri's topmost, announced on Windows after her window exists. On Windows the
         // Avalonia Topmost flag alone doesn't stick (verified: the visible pet window
-        // never got the topmost bit), and the platform handle Avalonia reports is not
-        // always the visible window's own handle (Avalonia recreates native windows),
-        // so this finds her actual visible window among this process's windows by its
-        // position and puts it in Windows' topmost band directly, like the WinForms
-        // Capri did with its NativeTop bit. Retries briefly until the bit is observed,
-        // then stops. Z-order only - never activates or moves anything, so typing in a
-        // browser never loses focus.
+        // never got the topmost bit), and Avalonia can also drop the native bit later
+        // when its native window is recreated, so this re-asserts it through the frame
+        // check via PetFrameTop(). Z-order only - never activates or moves anything, so
+        // typing in a browser never loses focus.
         internal static void EnsureOnTop(Window window)
         {
             if (!window.Topmost || !OperatingSystem.IsWindows()) return;
             AssertTop(window, 0);
+        }
+
+        // Cheap periodic guard (called by the pet's frame loop at low cadence): if the
+        // visible pet window fell out of the topmost band for any reason (window
+        // recreation, other apps' topmost tricks), put it back. No activation.
+        internal static bool OnTopHeld(Window window)
+        {
+            if (!window.Topmost || !OperatingSystem.IsWindows()) return true;
+            IntPtr handle = PetWindowHandle(window);
+            if (handle == IntPtr.Zero) return false;
+            try { return (GetWindowLong(handle, -20) & 0x8) != 0; } catch (Exception) { return true; }
+        }
+
+        internal static void PetFrameTop(Window window)
+        {
+            if (!OnTopHeld(window)) EnsureOnTop(window);
         }
 
         private static void AssertTop(Window window, int attempt)

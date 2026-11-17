@@ -483,6 +483,7 @@ namespace CapriDesktop
         private double coveredSince = -1;
         private double seatLost = -1;
         private double nextCheck;
+        private double nextTop;
         private int asking;
         private Smoke smoke;
 
@@ -853,6 +854,7 @@ namespace CapriDesktop
             if (Program.Smoke == null && now >= nextUpdate) { nextUpdate = now + 6 * 3600; CheckUpdate(); }
             if (UpdateNews != null && !away && !dragging && Talk.Quiet) { Talk.Answer("(update)", UpdateNews); UpdateNews = null; }
             if (outro != null && now >= outroAt) { Action next = outro; outro = null; next(); }
+            if (Program.Smoke == null && now >= nextTop) { nextTop = now + 1; if (IsVisible && !away) Look.PetFrameTop(this); }
             CheckRaised(now);
             CheckKeepAwake();
             if (Program.Smoke == null) CheckHabits(now);
@@ -1718,10 +1720,10 @@ namespace CapriDesktop
             int size = (int)body.Size;
             double hipDown = Px(body.Size * SitY);
             double floor = (double)flyArea.Bottom - hipDown;
-            double left = (double)flyArea.X - Px(body.Size * FrameX);
+            double left = (double)flyArea.X - Px(FrameX);
             double widthPx = (int)Math.Round(ClientSize.Width * DesktopScaling);
-            double right = (double)flyArea.Right - Px(body.Size * FrameX) - widthPx;
-            double top = (double)flyArea.Y - Px(body.Size * FrameY);
+            double right = (double)flyArea.Right - Px(FrameX) - widthPx;
+            double top = (double)flyArea.Y - Px(FrameY);
             double gravity = size * 11, settle = size * 2.2;
             int steps = Math.Max(1, (int)Math.Ceiling(step / 0.004));
             double dt = step / steps;
