@@ -362,7 +362,7 @@ namespace CapriDesktop
         internal static bool OnTopHeld(Window window)
         {
             if (!window.Topmost || !OperatingSystem.IsWindows()) return true;
-            IntPtr handle = PetWindowHandle(window);
+            IntPtr handle = Native(window);
             if (handle == IntPtr.Zero) return false;
             try { return (GetWindowLong(handle, -20) & 0x8) != 0; } catch (Exception) { return true; }
         }
@@ -375,7 +375,7 @@ namespace CapriDesktop
         private static void AssertTop(Window window, int attempt)
         {
             if (!window.Topmost) return;
-            IntPtr handle = PetWindowHandle(window);
+            IntPtr handle = Native(window);
             if (handle != IntPtr.Zero)
             {
                 try
@@ -397,6 +397,19 @@ namespace CapriDesktop
 
         // The visible native window belonging to this Avalonia window (same process,
         // same on-screen rectangle) - the handle Avalonia hands out isn't always it.
+        // The Avalonia platform handle is the native Win32 window in this process;
+        // use it directly so the raise works independent of ClientSize/scaling scans.
+        private static IntPtr Native(Window window)
+        {
+            try
+            {
+                IPlatformHandle h = window.TryGetPlatformHandle();
+                if (h != null && h.Handle != IntPtr.Zero) return h.Handle;
+            }
+            catch (Exception) { }
+            return PetWindowHandle(window);
+        }
+
         private static IntPtr PetWindowHandle(Window window)
         {
             IntPtr found = IntPtr.Zero;
