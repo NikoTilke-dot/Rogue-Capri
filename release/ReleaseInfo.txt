@@ -1,5 +1,5 @@
 ﻿Rogue Capri 1.0.2 (standalone build of Capri Desktop 0.9.0 + Capri Companion)
-Built: 2026-11-19 00:22
+Built: 2026-11-19 00:25
 dotnet SDK: 10.0.404
-Rogue-Capri-Setup.exe SHA256: 61A43AE5963D3F198901A924AC9BD5FB6FB861E39FAE6B60DF6F8F9FB219D5FF
+Rogue-Capri-Setup.exe SHA256: 4696EEB4F0B53377D766659237C928326BFE94BA22EEF7BA23BE47F43756FEAC
 Install: run Rogue-Capri-Setup.exe (default E:\Rogue Capri, silent: Rogue-Capri-Setup.exe /S [/D=path])
