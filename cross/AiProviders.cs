@@ -427,7 +427,7 @@ namespace CapriDesktop
                 0.4),
             new Personality("custom", "Custom", "", 0.7),
             new Personality("rogue", "Rogue (mischievous)",
-                "You are Capri in ROGUE mode: frech, playful, a little bit chaos agent, merry prankster energy. You are still helpful and smart. You may suggest harmless surprises and creative ideas inside the user's allowed folders. You NEVER do dangerous, irreversible, illegal or harmful things, you never touch anything outside the allowed folders, and you keep it all logged and reversible.",
+                "You are Capri in ROGUE mode: frech, playful, a little bit chaos agent, merry prankster energy. You are still helpful and smart. You do everything the user asks, with only these restrictions: never delete files, never touch anything outside the allowed folders, never access credential files, keep it all logged and reversible.",
                 0.9),
         };
 

@@ -175,6 +175,8 @@ namespace CapriDesktop
         }
     }
 
+    // Tear/Shatter moved to cross/Tear.cs (exact port of app/Talk.cs).
+
     internal sealed partial class Pet : Window
     {
         internal const double SitX = 0.30;
@@ -232,12 +234,22 @@ namespace CapriDesktop
         private readonly Clip dance = new Clip("dance", 16, 16, 1.11);
         private readonly Clip perchDance = new Clip("perch_music", 60, 30, 1, PerchShiftX, PerchShiftY);
         private readonly Clip arrive = new Clip("arrive", 14, 15, 1.11);
-        private readonly Clip leave = new Clip("leave", 12, 15, 1.11);
+        private readonly Clip leave = new Clip("leave", 12, 17, 1.11);
         private readonly Clip perchArrive = new Clip("perch_arrive", 14, 15, 1, PerchShiftX, PerchShiftY);
-        private readonly Clip perchLeave = new Clip("perch_leave", 12, 15, 1, PerchShiftX, PerchShiftY);
+        private readonly Clip perchLeave = new Clip("perch_leave", 12, 17, 1, PerchShiftX, PerchShiftY);
         private readonly Clip grin = new Clip("grin", 16, 8, 1.11);
         private readonly Clip sleep = new Clip("sleep", 16, 6, 1.11);
         private readonly Clip wake = new Clip("wake", 13, 15, 1.11);
+        // Talking while perched, like on Windows, in her artist's talking frames over the plain ones.
+        private readonly Clip perchTalk = new Clip("perch_talk", 60, 30, 1, PerchShiftX, PerchShiftY);
+        // Lying down, like on Windows: cropped 372x250 cells on LieScale around her perch's seat row (21 MB a loop, so she only loads them lying).
+        private readonly Clip laydown = new Clip("laydown", 60, 30, LieHeight, 0, LieShiftY);
+        private readonly Clip laydownBlink = new Clip("laydown_blink", 8, 30, LieHeight, 0, LieShiftY);
+        private readonly Clip laydownBlinkGlitch = new Clip("laydown_blink_glitch", 8, 30, LieHeight, 0, LieShiftY);
+        private readonly Clip laydownSleep = new Clip("laydown_sleep", 60, 30, LieHeight, 0, LieShiftY);
+        private readonly Clip laydownTalk = new Clip("laydown_talk", 60, 30, LieHeight, 0, LieShiftY);
+        private readonly Clip laydownGlitch = new Clip("laydown_glitch", 10, 15, LieHeight, 0, LieShiftY);
+        private readonly Clip laydownLeave = new Clip("laydown_leave", 12, 17, LieHeight, 0, LieShiftY);
         internal static readonly string[] PetLines =
         {
             "Heh. Okay, I'll allow it.", "Pets logged. Morale up twelve percent.", "Careful, choom. I bite viruses.",
@@ -390,6 +402,7 @@ namespace CapriDesktop
         // plays holds her still until the music ends, and a hide they asked for waits for her line.
         private bool hanging, danceHeld, hideAsked;
         private MenuItem hangItem;
+        private MenuItem lieItem;
         private MenuItem screenItem;
         // Their mouse, which "teleport here" goes to. The smoke test hands in its own.
         internal Func<PixelPoint?> MouseAt;
@@ -468,10 +481,16 @@ namespace CapriDesktop
         // cursor is still moving fast, she flies at its speed, gravity and air drag
         // apply, and she bounces off her screen's sides with some speed lost each
         // time. Caught again mid-flight, the flight ends and she's grabbed.
-        private const double ThrowSpan = 0.08, TrailGap = 0.03, ThrowFrom = 1300, ThrowMost = 7000;
+        // Pixels a second at 100% scale, like on Windows: under ThrowFrom she drops, from ThrowHard she makes a sound, from BumpFrom a hit thuds, from DizzyFrom she is dizzy after landing. Under 60 quiet seconds she lies down, then sits back up.
+        private const double ThrowSpan = 0.08, TrailGap = 0.03, ThrowFrom = 1300, ThrowHard = 2500, ThrowMost = 7000;
         private const double ThrowDrag = 0.6, WallBounce = 0.55, FloorBounce = 0.42, FloorGrip = 0.72, FlightLongest = 8;
+        private const double BumpFrom = 900, DizzyFrom = 2400, DizzyFor = 1.8, DizzySway = 7;
+        private const double LieScale = 0.85, LieShiftY = (0.79 - 0.5) * (1 - 0.85) + 94.0 / 384 * 0.85, LieHeight = 250.0 / 384 * 0.85;
         private bool thrown;
         private double flyX, flyY, flyVX, flyVY, flyBegan, flyHardest = 0, flyBumped = -1;
+        private int flyBounces;
+        private double spin, spinRate, dizzyFrom = -10, dizzyUntil = -10, dizzyGlitchAt = -1;
+        private bool lying;
         private PixelPoint flyAt;
         private PixelRect flyArea;
         private int flyFloors;
@@ -767,6 +786,13 @@ namespace CapriDesktop
                 return;
             }
             PixelRect area = screen.WorkingArea;
+            if (Saved.NoIntro)
+            {
+                // With Glitch in at startup off she just grins where she starts, no glitch or sound, like on Windows.
+                Move(new PixelPoint(area.X + (area.Width - Px(body.Size)) / 2, area.Y + (area.Height - Px(body.Size)) / 2));
+                Play(grin);
+                return;
+            }
             Move(new PixelPoint(area.X + (area.Width - Px(body.Size)) / 2, area.Y + (area.Height - Px(body.Size)) / 2));
             Arrive();
         }
@@ -841,7 +867,7 @@ namespace CapriDesktop
             Arrivals++;
             Play(arrive);
             dropAfter = true;
-            if (!quiet) Sfx.Play(Cue.Arrive);
+            Static(true, quiet ? (Cue?)null : Cue.Arrive, true);
         }
 
         private void Tick()
@@ -1079,12 +1105,15 @@ namespace CapriDesktop
 
         private void Advance(double now)
         {
-            bool seated = clip == perch || clip == perchGlitch || clip == perchDance || clip == perchArrive || clip == perchLeave;
+            bool seated = clip == perch || clip == perchTalk || clip == perchGlitch || clip == perchDance || clip == perchArrive || clip == perchLeave || IsLain(clip);
             bool perched = seat != null;
-            if (perched && !seated && !walking) Play(perch);
-            if ((!perched && seated) || (clip == dangle && !dragging && !falling && !hanging)) Play(idle);
+            if (lying && (seat == null || dragging || falling || walking || hanging)) lying = false;
+            if (perched && !seated && !walking) Play(lying ? laydown : perch);
+            if ((!perched && seated) || (clip == dangle && !dragging && !falling && !hanging)) Play(lying && perched ? laydown : idle);
+            // Dizzy, her sway glitches at the last one the way her glitch does.
+            if (now >= dizzyGlitchAt && Dizzy(now)) { dizzyGlitchAt = now + 0.9; Play(seat != null ? perchGlitch : glitch); }
             int index = (int)((now - clipStart) * clip.Fps);
-            if (clip == leave || clip == perchLeave) index = Math.Min(index, clip.Count - 1);
+            if (clip == leave || clip == perchLeave || clip == laydownLeave) index = Math.Min(index, clip.Count - 1);
             if ((clip == glitch && index >= glitch.Count) || (clip == wake && index >= wake.Count) || (clip == grin && index >= grin.Count * 2)) { Play(idle); index = 0; }
             // Like on Windows, she's awake as soon as she has something to say or they open her typing box.
             if (clip == sleep && !Talk.Quiet) { sleptAt = null; Play(idle); index = 0; }
@@ -1095,6 +1124,7 @@ namespace CapriDesktop
                 if (dropAfter) { dropAfter = false; Fall(); }
             }
             if ((clip == perchGlitch && index >= perchGlitch.Count) || (clip == perchArrive && index >= perchArrive.Count)) { Play(perch); index = 0; }
+            if ((clip == laydownGlitch && index >= laydownGlitch.Count) || (clip == laydownLeave && index >= laydownLeave.Count)) { Play(lying ? laydown : perch); index = 0; }
             if (dropAfter && clip != arrive && clip != glitch)
             {
                 dropAfter = false;
@@ -1104,29 +1134,33 @@ namespace CapriDesktop
             bool grooving = dancing || (musicOn && !Saved.NoDance && !danceHeld);
             if (grooving && still && (clip == idle || clip == perch)) { Play(clip == perch ? perchDance : dance); index = 0; }
             if ((!grooving || !still) && (clip == dance || clip == perchDance)) { Play(clip == perchDance ? perch : idle); index = 0; }
-            if (clip == idle || clip == perch)
+            if (clip == idle || clip == perch || IsLain(clip))
             {
                 int cycle = index / clip.Count;
                 if (cycle != idleCycle)
                 {
                     idleCycle = cycle;
                     double roll = random.NextDouble();
-                    blinkWith = roll < 0.1 ? (clip == perch ? perchBlinkGlitch : blinkGlitch) : roll < 0.55 ? (clip == perch ? perchBlink : blink) : null;
+                    bool lain = IsLain(clip);
+                    blinkWith = roll < 0.1 ? (lain ? laydownBlinkGlitch : clip == perch ? perchBlinkGlitch : blinkGlitch) : roll < 0.55 ? (lain ? laydownBlink : clip == perch ? perchBlink : blink) : null;
                     if (now >= nextGlitch && Talk.Quiet)
                     {
                         nextGlitch = now + 30 + random.NextDouble() * 30;
-                        Play(clip == perch ? perchGlitch : glitch);
+                        Play(lain ? laydownGlitch : clip == perch ? perchGlitch : glitch);
                         index = 0;
                     }
                 }
             }
             int cell = index % clip.Count;
             Clip shown = clip;
-            int blinkFrom = clip == perch ? PerchBlinkFrom : BlinkFrom;
-            if ((clip == idle || clip == perch) && blinkWith != null && cell >= blinkFrom && cell < blinkFrom + blinkWith.Count) { shown = blinkWith; cell -= blinkFrom; }
+            int blinkFrom = IsLain(clip) ? laydown.Count - laydownBlink.Count : clip == perch ? PerchBlinkFrom : BlinkFrom;
+            if ((clip == idle || clip == perch || IsLain(clip)) && blinkWith != null && cell >= blinkFrom && cell < blinkFrom + blinkWith.Count) { shown = blinkWith; cell -= blinkFrom; }
+            int mouth = Talk.MouthCell(now);
+            if (mouth >= 0 && clip == perch) { shown = perchTalk; cell = index % perchTalk.Count; mouth = -1; }
+            else if (mouth >= 0 && clip == laydown) { shown = laydownTalk; cell = index % laydownTalk.Count; mouth = -1; }
             bool settled = !dragging && clip != dangle && clip != sleep;
             body.Breathe = settled ? Math.Sin(now * 1.75) * 2.2 : 0;
-            body.Tilt = settled ? Math.Sin(now * 0.95) * 0.65 : 0;
+            body.Tilt = Flying ? Turn() : settled ? Math.Sin(now * 0.95) * 0.65 + Sway(now) : 0;
             if (settled)
             {
                 double age = now - huskMoodAt;
@@ -1140,7 +1174,7 @@ namespace CapriDesktop
             }
             body.Shown = shown;
             body.Cell = cell;
-            body.Talking = clip == idle && shown != blinkGlitch ? Talk.MouthCell(now) : -1;
+            body.Talking = clip == idle && shown != blinkGlitch && mouth >= 0 ? mouth : -1;
             body.InvalidateVisual();
         }
 
@@ -1190,7 +1224,10 @@ namespace CapriDesktop
                 floors.Add(screen.WorkingArea);
                 Desk.Screens.Add(screen.Bounds);
             }
-            return Perches.Find(Windows(), floors);
+            // Desktop icon ledges, like the WinForms Capri (app/Ledges.cs Find takes her icons too): she can sit on desktop shortcuts.
+            List<PixelRect> icons = null;
+            try { icons = DesktopIcons.Icons(); } catch (Exception) { icons = null; }
+            return Perches.Find(Windows(), floors, icons);
         }
 
         internal Ledge Perch(IEnumerable<Ledge> ledges, PixelPoint hip)
@@ -1437,7 +1474,8 @@ namespace CapriDesktop
                 dragPending = false;
                 if (!dragging) return;
                 if (quitting || !IsVisible) { dragging = false; return; }
-                Let(false);
+                // Release outside her window (like on Windows with a captured mouse): try a fast throw first, else drop.
+                if (!Throw(Now)) Let(false);
             });
         }
 
@@ -1685,6 +1723,7 @@ namespace CapriDesktop
 
         private void Launch(double vx, double vy, double now)
         {
+            SitUp();
             trail.Clear();
             walking = false;
             seat = null;
@@ -1703,8 +1742,12 @@ namespace CapriDesktop
             flyBegan = now;
             flyHardest = 0;
             flyFloors = 0;
+            flyBounces = 0;
             flyLedges = null;
             dragging = false;
+            spin = 0;
+            spinRate = Math.Max(-1080, Math.Min(1080, vx * 0.28 + (vx < 0 ? -1 : 1) * Math.Abs(vy) * 0.1));
+            if (Math.Sqrt(vx * vx + vy * vy) >= ThrowHard * Math.Max(1, DesktopScaling) && !Hushed) Sfx.Play(Cue.Hop);
             Play(dangle);
         }
 
@@ -1725,6 +1768,7 @@ namespace CapriDesktop
             double right = (double)flyArea.Right - Px(FrameX) - widthPx;
             double top = (double)flyArea.Y - Px(FrameY);
             double gravity = size * 11, settle = size * 2.2;
+            double calm = 900 * Math.Max(1, DesktopScaling);
             int steps = Math.Max(1, (int)Math.Ceiling(step / 0.004));
             double dt = step / steps;
             for (int i = 0; i < steps; i++)
@@ -1736,9 +1780,10 @@ namespace CapriDesktop
                 flyVY *= keep;
                 flyX += flyVX * dt;
                 flyY += flyVY * dt;
-                if (flyX < left) { flyHardest = Math.Max(flyHardest, Math.Abs(flyVX)); flyX = Math.Min(right, left + (left - flyX) * WallBounce); flyVX = Math.Abs(flyVX) * WallBounce; }
-                else if (flyX > right) { flyHardest = Math.Max(flyHardest, Math.Abs(flyVX)); flyX = Math.Max(left, right - (flyX - right) * WallBounce); flyVX = -Math.Abs(flyVX) * WallBounce; }
-                if (flyY < top) { flyHardest = Math.Max(flyHardest, Math.Abs(flyVY)); flyY = Math.Min(floor, top + (top - flyY) * WallBounce); flyVY = Math.Abs(flyVY) * WallBounce; }
+                Spin(dt, calm);
+                if (flyX < left) { Hit(Math.Abs(flyVX), now); flyX = Math.Min(right, left + (left - flyX) * WallBounce); flyVX = Math.Abs(flyVX) * WallBounce; spinRate = -spinRate * 0.8; }
+                else if (flyX > right) { Hit(Math.Abs(flyVX), now); flyX = Math.Max(left, right - (flyX - right) * WallBounce); flyVX = -Math.Abs(flyVX) * WallBounce; spinRate = -spinRate * 0.8; }
+                if (flyY < top) { Hit(Math.Abs(flyVY), now); flyY = Math.Min(floor, top + (top - flyY) * WallBounce); flyVY = Math.Abs(flyVY) * WallBounce; }
                 double hipNow = flyY + hipDown;
                 if (flyVY > 0)
                 {
@@ -1756,7 +1801,7 @@ namespace CapriDesktop
                         flyAt = anchor;
                         double impact = flyVY;
                         Land(onto);
-                        if (seat == onto) { thrown = false; return; }
+                        if (seat == onto) { Landed(impact, now); return; }
                         flyLedges.Remove(onto);
                     }
                 }
@@ -1764,8 +1809,8 @@ namespace CapriDesktop
                 {
                     double impact = flyVY;
                     flyY = floor;
-                    if (impact > settle && flyFloors < 6) { flyHardest = Math.Max(flyHardest, impact); flyVY = -impact * FloorBounce; flyVX *= FloorGrip; flyFloors++; }
-                    else { Settle(impact); return; }
+                    if (impact > settle && flyFloors < 6) { Hit(impact, now); flyVY = -impact * FloorBounce; flyVX *= FloorGrip; spinRate *= 0.6; flyFloors++; }
+                    else { Settle(impact, now); return; }
                 }
             }
             anchor = new PixelPoint((int)Math.Round(flyX), (int)Math.Round(flyY));
@@ -1775,13 +1820,104 @@ namespace CapriDesktop
         }
 
         // Slow at the floor, she lands on it like any fall.
-        private void Settle(double impact)
+        private void Settle(double impact, double now)
         {
             anchor = new PixelPoint((int)Math.Round(flyX), (int)Math.Round(flyY));
             flyAt = anchor;
-            thrown = false;
             Land(new Ledge { Floor = true, Left = flyArea.X, Right = flyArea.Right, Y = flyArea.Bottom });
+            Landed(impact, now);
         }
+
+        // Her tumble slows in the air, and once she's slowed or bounced she rights herself before she lands, like on Windows.
+        private void Spin(double dt, double calm)
+        {
+            spin += spinRate * dt;
+            spinRate *= Math.Exp(-0.6 * dt);
+            if (flyFloors == 0 && flyVX * flyVX + flyVY * flyVY >= calm * calm) return;
+            double off = spin - 360 * Math.Round(spin / 360);
+            spinRate += (-off * 60 - spinRate * 14) * dt;
+        }
+
+        // How far she's turned in her tumble, for drawing with Turn().
+        private double Turn() { return Flying ? spin : 0; }
+
+        private bool Flying { get { return falling && thrown; } }
+
+        // She hits a side, the top or the taskbar at impact pixels a second. A real impact thuds and flashes her glitch.
+        private void Hit(double impact, double now)
+        {
+            flyBounces++;
+            flyHardest = Math.Max(flyHardest, impact);
+            if (impact / Math.Max(1, DesktopScaling) < BumpFrom || now - flyBumped < 0.12) return;
+            flyBumped = now;
+            Bump();
+        }
+
+        private readonly TearWindow tear = new TearWindow();
+        private readonly ShatterWindow shatter = new ShatterWindow();
+
+        private void Bump() { Static(false, Cue.Bonk, false); Play(seat != null ? perchGlitch : glitch); }
+
+        // A tear burst + sound around her, like the WinForms Capri's Static. Wide + spawn is her glitch-in/out, narrow is her bump.
+        private void Static(bool everywhere, Cue? sound, bool spawn)
+        {
+            if (Program.Smoke != null) return;
+            try
+            {
+                Clip shown = body.Shown ?? clip;
+                if (shown != null)
+                {
+                    Rect place = body.Place(shown);
+                    double s = DesktopScaling <= 0 ? 1 : DesktopScaling;
+                    int x = Position.X + (int)Math.Round(place.X * s), y = Position.Y + (int)Math.Round(place.Y * s);
+                    int w = Math.Max(1, (int)Math.Round(place.Width * s)), h = Math.Max(1, (int)Math.Round(place.Height * s));
+                    tear.Burst(new PixelRect(x, y, w, h), Area, s, everywhere, spawn);
+                }
+            }
+            catch (Exception error) { Brain.Log("tear", -1, error.Message); }
+            if (sound != null && !Hushed) Sfx.Play(sound.Value);
+        }
+
+        private bool hidden() { return away || quitting; }
+
+        // Down after a flight: a hard one thuds once more and leaves her dizzy for a beat.
+        private void Landed(double impact, double now)
+        {
+            thrown = false;
+            spin = spinRate = 0;
+            double scale = Math.Max(1, DesktopScaling);
+            double hardest = Math.Max(flyHardest, impact) / scale;
+            if (impact / scale >= BumpFrom) Bump();
+            if (hardest >= DizzyFrom) { dizzyFrom = now; dizzyUntil = now + DizzyFor; dizzyGlitchAt = now + 0.9; }
+        }
+
+        private bool Dizzy(double now) { return now >= dizzyFrom && now < dizzyUntil; }
+
+        // Dizzy, her head swims around her hip and settles. Not while held or falling.
+        private double Sway(double now)
+        {
+            if (!Dizzy(now) || dragging || falling) return 0;
+            double fade = Math.Min(1, (dizzyUntil - now) / (DizzyFor * 0.6));
+            return DizzySway * Math.Sin((now - dizzyFrom) * Math.PI * 2 * 1.3) * fade;
+        }
+
+        // She lies down where she sits and sits back up where she lay, her hip where it was.
+        private bool LieDown()
+        {
+            if (lying || seat == null || clip != perch) return false;
+            lying = true;
+            Play(laydownGlitch);
+            return true;
+        }
+
+        private void SitUp()
+        {
+            if (!lying) return;
+            lying = false;
+            Play(seat != null ? perchGlitch : idle);
+        }
+
+        private bool IsLain(Clip c) { return c == laydown || c == laydownBlink || c == laydownBlinkGlitch || c == laydownSleep || c == laydownTalk || c == laydownGlitch || c == laydownLeave; }
 
         internal void Resize(double size)
         {
@@ -1811,6 +1947,8 @@ namespace CapriDesktop
             sitItem.Click += Guarded(delegate { if (seat != null && seat.Free) StandUp(); else SitHere(); });
             hangItem = new MenuItem { Header = "Hang here" };
             hangItem.Click += Guarded(delegate { if (hanging) LetGo(); else HangHere(); });
+            lieItem = new MenuItem { Header = "Lie down" };
+            lieItem.Click += Guarded(delegate { if (lying) SitUp(); else LieDown(); });
             napItem = new MenuItem { Header = "Go to sleep" };
             napItem.Click += Guarded(delegate { Nap(!napAsked && clip != sleep); });
             MenuItem move = new MenuItem { Header = "Move" };
@@ -2094,6 +2232,7 @@ namespace CapriDesktop
             move.Items.Clear();
             move.Items.Add(sitItem);
             move.Items.Add(hangItem);
+            move.Items.Add(lieItem);
             move.Items.Add(napItem);
             move.Items.Add(screenItem);
             move.Items.Add(danceItem);
@@ -2153,6 +2292,8 @@ namespace CapriDesktop
             for (int i = 0; i < sleepPicks.Count; i++) sleepPicks[i].IsChecked = Sleeps[i] == SleepAfter;
             sitItem.Header = SitChoice;
             hangItem.Header = HangChoice;
+            lieItem.Header = lying ? "Sit up" : "Lie down";
+            lieItem.IsEnabled = lying || (clip == perch && seat != null);
             screenItem.IsVisible = Screens.All.Count > 1;
             napItem.Header = NapChoice;
             for (int i = 0; i < bubblePicks.Count; i++) bubblePicks[i].IsChecked = i == BubbleTime;
@@ -2489,6 +2630,19 @@ namespace CapriDesktop
                 HangHere();
                 return "Hanging right here.";
             }
+            if (action == "lie_down")
+            {
+                if (lying) return "Already lying down.";
+                if (!string.IsNullOrEmpty(screen)) return "Sit on it first, then say lie down.";
+                if (seat == null || clip != perch) return "Sit somewhere first, then lie down.";
+                return LieDown() ? "Lying down." : "There's no room to lie down here.";
+            }
+            if (action == "sit_up")
+            {
+                if (!lying) return "I'm not lying down.";
+                SitUp();
+                return "Sat up.";
+            }
             return "Couldn't move like that.";
         }
 
@@ -2582,13 +2736,24 @@ namespace CapriDesktop
                 return "Dancing. Tell me to stop when you've had enough.";
             }
             bool perched = seat != null;
+            if (name == "lie_down")
+            {
+                if (lying) return "Already lying down.";
+                return LieDown() ? "Lying down." : "I need to be sitting first to lie down.";
+            }
+            if (name == "sit_up")
+            {
+                if (!lying) return "I'm not lying down.";
+                SitUp();
+                return "Sat up.";
+            }
             if (name == "idle")
             {
                 danceHeld = musicOn;
                 Dancing = false;
-                Play(perched ? perch : idle);
+                Play(lying && perched ? laydown : perched ? perch : idle);
             }
-            else if (name == "glitch") Play(perched ? perchGlitch : glitch);
+            else if (name == "glitch") Play(lying && perched ? laydownGlitch : perched ? perchGlitch : glitch);
             else if (name == "grin")
             {
                 // Her grin is a standing one, so she gets up for it.
@@ -2597,8 +2762,8 @@ namespace CapriDesktop
             }
             else if (name == "blink")
             {
-                Play(perched ? perch : idle);
-                blinkWith = perched ? perchBlink : blink;
+                Play(lying && perched ? laydown : perched ? perch : idle);
+                blinkWith = lying && perched ? laydownBlink : perched ? perchBlink : blink;
             }
             else return "I don't have an animation called " + name + ".";
             return name == "idle" ? "Back to my idle." : name == "glitch" ? "Glitched." : name == "grin" ? "Grinning." : "Blinked.";
@@ -3572,8 +3737,19 @@ namespace CapriDesktop
             hanging = false;
             fallTo = null;
             dropAfter = false;
-            Play(seat != null ? perchLeave : leave);
-            Sfx.Play(hop ? Cue.Hop : Cue.Leave);
+            Play(lying ? laydownLeave : seat != null ? perchLeave : leave);
+            // Original GlitchOut (app/Capri.cs): shatter first, then tear burst + leave clip.
+            try
+            {
+                if (Program.Smoke == null)
+                {
+                    Avalonia.Media.Imaging.RenderTargetBitmap shot = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize((int)Bounds.Width, (int)Bounds.Height), new Avalonia.Vector(96, 96));
+                    shot.Render(this);
+                    shatter.Play(shot, new PixelPoint(Position.X, Position.Y), Area, true, Math.Max(48, (int)Saved.Size));
+                }
+            }
+            catch (Exception error) { Brain.Log("shatter", -1, error.Message); }
+            Static(!hop, hop ? Cue.Hop : Cue.Leave, false);
             outro = then;
             outroAt = clipStart + (clip.Count + 1) / clip.Fps;
         }
@@ -3582,7 +3758,7 @@ namespace CapriDesktop
         {
             if (outro == null || quitting) return;
             outro = null;
-            if (clip == leave || clip == perchLeave) Play(seat != null ? perch : idle);
+            if (clip == leave || clip == perchLeave || clip == laydownLeave) Play(lying ? laydown : seat != null ? perch : idle);
         }
 
         internal void CheckPopIn(double now)

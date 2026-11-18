@@ -15,8 +15,18 @@ namespace CapriDesktop
         internal static int Patience = 20;
         internal static int Settle = 1500;
         private static readonly bool OnMac = OperatingSystem.IsMacOS();
+        private static readonly bool OnWin = OperatingSystem.IsWindows();
         private static readonly Regex Field = new Regex(@"\s*%[fFuUdDnNickvm]");
         private static readonly string[] MacPlayers = { "Spotify", "Music" };
+
+        [DllImport("winmm.dll")] private static extern bool PlaySound(string pszSound, IntPtr hmod, uint fdwSound);
+        private const uint SndFileName = 0x20000, SndPurge = 0x40;
+
+        private static void PlayFile(string path)
+        {
+            try { PlaySound(path, IntPtr.Zero, SndFileName); }
+            catch (Exception error) { Brain.Log("sound", -1, error.Message); }
+        }
 
         private static string soundPlayer;
         private static Process speaker;
@@ -32,7 +42,8 @@ namespace CapriDesktop
                 {
                     path = Path.Combine(Path.GetTempPath(), "capri-sound-" + Guid.NewGuid().ToString("N") + ".wav");
                     File.WriteAllBytes(path, Voice.Wave(samples, Sfx.Rate));
-                    Music.Run(Player(), new[] { path });
+                    if (OnWin) { PlayFile(path); }
+                    else Music.Run(Player(), new[] { path });
                 }
                 catch (IOException error) { Brain.Log("sound", -1, error.Message); }
                 catch (UnauthorizedAccessException error) { Brain.Log("sound", -1, error.Message); }
@@ -62,6 +73,7 @@ namespace CapriDesktop
                 {
                     path = Path.Combine(Path.GetTempPath(), "capri-voice-" + Guid.NewGuid().ToString("N") + ".wav");
                     File.WriteAllBytes(path, wav);
+                    if (OnWin) { if (turn == speeches) PlayFile(path); return; }
                     ProcessStartInfo start = new ProcessStartInfo(Player()) { UseShellExecute = false, CreateNoWindow = true };
                     start.ArgumentList.Add(path);
                     using (Process process = Process.Start(start))
@@ -87,6 +99,7 @@ namespace CapriDesktop
         internal static void Hush()
         {
             Interlocked.Increment(ref speeches);
+            if (OnWin) { try { PlaySound(null, IntPtr.Zero, SndPurge); } catch (Exception) { } return; }
             Process playing = speaker;
             speaker = null;
             try { if (playing != null && !playing.HasExited) playing.Kill(); }

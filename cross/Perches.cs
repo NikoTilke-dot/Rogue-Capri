@@ -8,6 +8,7 @@ namespace CapriDesktop
     {
         internal long Window;
         internal PixelRect Bounds;
+        internal PixelRect Icon;
         internal bool Floor;
         internal bool Free;
         internal int Left;
@@ -35,7 +36,11 @@ namespace CapriDesktop
             return spans;
         }
 
-        internal static List<Ledge> Find(IEnumerable<Spot> windows, IEnumerable<PixelRect> floors)
+        private const int IconInset = 2;
+
+        internal static List<Ledge> Find(IEnumerable<Spot> windows, IEnumerable<PixelRect> floors) { return Find(windows, floors, null); }
+
+        internal static List<Ledge> Find(IEnumerable<Spot> windows, IEnumerable<PixelRect> floors, IEnumerable<PixelRect> icons)
         {
             List<Ledge> found = new List<Ledge>();
             List<PixelRect> above = new List<PixelRect>();
@@ -46,6 +51,10 @@ namespace CapriDesktop
                         found.Add(new Ledge { Window = window.Window, Bounds = window.Bounds, Left = span[0], Right = span[1], Y = window.Bounds.Y });
                 above.Add(window.Bounds);
             }
+            if (icons != null)
+                foreach (PixelRect icon in icons)
+                    foreach (int[] span in Open(icon.X, icon.Right, icon.Y + IconInset, above))
+                        found.Add(new Ledge { Icon = icon, Left = span[0], Right = span[1], Y = icon.Y + IconInset });
             foreach (PixelRect floor in floors) found.Add(new Ledge { Floor = true, Left = floor.X, Right = floor.Right, Y = floor.Bottom });
             return found;
         }
