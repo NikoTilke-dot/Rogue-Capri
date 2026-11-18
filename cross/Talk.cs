@@ -744,6 +744,7 @@ namespace CapriDesktop
 
         private void Hover(int part)
         {
+            Look.ForceTop(this);
             if (face.Hover == part) return;
             face.Hover = part;
             face.InvalidateVisual();

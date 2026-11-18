@@ -880,7 +880,7 @@ namespace CapriDesktop
             if (Program.Smoke == null && now >= nextUpdate) { nextUpdate = now + 6 * 3600; CheckUpdate(); }
             if (UpdateNews != null && !away && !dragging && Talk.Quiet) { Talk.Answer("(update)", UpdateNews); UpdateNews = null; }
             if (outro != null && now >= outroAt) { Action next = outro; outro = null; next(); }
-            if (Program.Smoke == null && now >= nextTop) { nextTop = now + 1; if (IsVisible && !away) { Look.PetFrameTop(this); if (Talk.Pill.IsVisible) Look.PetFrameTop(Talk.Pill); if (Talk.Bubble.IsVisible) Look.PetFrameTop(Talk.Bubble); if (Talk.Typer.IsVisible) Look.PetFrameTop(Talk.Typer); } }
+            if (Program.Smoke == null && now >= nextTop) { nextTop = now + 0.25; if (IsVisible && !away) { Look.PetFrameTop(this); if (Talk.Pill.IsVisible) Look.ForceTop(Talk.Pill); if (Talk.Bubble.IsVisible) Look.ForceTop(Talk.Bubble); if (Talk.Typer.IsVisible) Look.ForceTop(Talk.Typer); } }
             CheckRaised(now);
             CheckKeepAwake();
             if (Program.Smoke == null) CheckHabits(now);
@@ -1388,6 +1388,8 @@ namespace CapriDesktop
                 downAt = DragPoint(at);
                 grab = new PixelPoint(downAt.X - anchor.X, downAt.Y - anchor.Y);
                 e.Pointer.Capture(this);
+                // Clicking Capri brings her window above Talk in the topmost band: put Talk back on top right away.
+                Dispatcher.UIThread.Post(delegate { if (Talk.Pill.IsVisible) Look.ForceTop(Talk.Pill); if (Talk.Bubble.IsVisible) Look.ForceTop(Talk.Bubble); if (Talk.Typer.IsVisible) Look.ForceTop(Talk.Typer); });
             });
         }
 

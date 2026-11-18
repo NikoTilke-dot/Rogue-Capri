@@ -339,6 +339,20 @@ namespace CapriDesktop
             catch (Exception) { }
         }
 
+        internal static void ForceTop(Window window)
+        {
+            if (!window.Topmost || !OperatingSystem.IsWindows()) return;
+            try
+            {
+                IPlatformHandle handle = window.TryGetPlatformHandle();
+                IntPtr h = handle != null ? handle.Handle : Native(window);
+                if (h == IntPtr.Zero) return;
+                SetWindowPos(h, HWndTopMost, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 | 0x0040);
+                SetWindowLong(h, -20, GetWindowLong(h, -20) | 0x8);
+            }
+            catch (Exception) { }
+        }
+
         private static readonly IntPtr HWndTopMost = new IntPtr(-1);
         [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr insertAfter, int x, int y, int cx, int cy, int flags);
         [System.Runtime.InteropServices.DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr h, int index);
