@@ -375,7 +375,33 @@ namespace CapriDesktop
         {
             if (closed || working || first + card >= shown.Count) return;
             ModListing mod = shown[first + card];
-            if (mod.KindIndex == 2) { Say(Mods.WindowsOnly); return; }
+            // Code mods (.capri-code) can't run in the Avalonia build, but they can still be downloaded as files.
+            if (mod.KindIndex == 2)
+            {
+                working = true; Say("Downloading " + mod.Title + " (code mod file)..."); Sync();
+                ThreadPool.QueueUserWorkItem(delegate
+                {
+                    string file = null, problem = null;
+                    try
+                    {
+                        file = ModDirectory.Download(mod, Path.Combine(Path.GetTempPath(), "capri-mod-downloads"));
+                        string target = Path.Combine(pet.ModList.Folder, "downloaded", Path.GetFileName(mod.FileName));
+                        Directory.CreateDirectory(Path.GetDirectoryName(target));
+                        File.Copy(file, target, true);
+                        mod.Downloads++;
+                        ThreadPool.QueueUserWorkItem(delegate { try { ModDirectory.CountDownload(mod.Folder); } catch (Exception error) { Brain.Log("mods", -1, error.Message); } });
+                    }
+                    catch (Exception error) { problem = error is ModException ? error.Message : "Couldn't download that mod."; }
+                    Dispatcher.UIThread.Post(delegate
+                    {
+                        if (closed) return;
+                        Say(problem ?? ("Saved to mods/downloaded/" + Path.GetFileName(mod.FileName) + " — this build can't run code mods, but the file is yours."));
+                        try { if (file != null) ModDirectory.Clean(file); } catch (Exception) { }
+                        working = false; Sync();
+                    });
+                });
+                return;
+            }
             working = true; Say("Downloading " + mod.Title + "..."); Sync();
             ThreadPool.QueueUserWorkItem(delegate
             {
