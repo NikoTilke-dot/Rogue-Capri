@@ -252,7 +252,7 @@ namespace CapriDesktop
                 metas[i].Text = mod.KindIndex == 2 ? Mods.WindowsOnly : mod.Kind + (installed ? " Installed." : "");
                 numbers[i].Text = statsLive ? ModDirectory.DownloadLine(mod) + "  |  " + ModDirectory.RatingLine(mod) : loading ? "Loading counts and ratings..." : "Counts and ratings unavailable.";
                 downloads[i].Text = installed ? "Reinstall" : "Download";
-                downloads[i].IsEnabled = !working && mod.KindIndex != 2;
+                downloads[i].IsEnabled = !working;
                 ratings[i].IsEnabled = !working && statsLive && installed;
                 ratings[i].Text = "Rate this mod";
                 Bitmap picture = null;
